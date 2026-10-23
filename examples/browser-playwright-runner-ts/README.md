@@ -35,9 +35,11 @@ alone, so CI that mints its own does not create a second.
 - **One session is one browser, so the suite runs serially.** `workers: 1` is
   deliberate: a second worker would fight the first over the same remote Chrome.
   For parallelism, mint a session per worker.
-- **Tests share a context.** Local Playwright gives each test a fresh one; here
-  they inherit the session's cookies and storage. Convenient for a login done
-  once, surprising if your suite assumes isolation.
+- **Each test gets a fresh context, like local Playwright.** The context is
+  seeded with a snapshot of the session's starting storage state, so a login
+  done before the suite is every test's starting point — but cookies and
+  storage a test writes are discarded with its context and never leak into
+  the next test.
 - **Playwright's trace, video and screenshot-on-failure are off**, because the
   fixture overrides `context`. Solari's session replay is the artifact instead.
 

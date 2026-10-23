@@ -19,14 +19,22 @@
  * moves. CDP has no version gate, so connecting this way is the price of never
  * being pinned to whatever we happen to run today.
  *
+ * Isolation matches local Playwright: every test gets a FRESH context and
+ * page, and whatever it does — cookies, storage, extra tabs — is discarded
+ * when the context closes at the end of the test. Auth survives because the
+ * fresh context is seeded from a snapshot of the session's starting storage
+ * state (see solariStorageState below): a login done before the suite starts
+ * is inherited by each test as its starting point, but one test's changes
+ * never leak into the next.
+ *
  * Trade-off: overriding `context` means Playwright's own trace/video/
  * screenshot-on-failure are off. Solari's session replay is the artifact instead.
  */
-import { test as base, chromium, type Browser } from '@playwright/test'
+import { test as base, chromium, type Browser, type StorageState } from '@playwright/test'
 
 export { expect } from '@playwright/test'
 
-export const test = base.extend<{}, { solariBrowser: Browser }>({
+export const test = base.extend<{}, { solariBrowser: Browser; solariStorageState: StorageState }>({
   // Worker-scoped, so one CDP connection is opened and closed once for the whole
   // file. Per-test would be tidier to read and wrong: closing a CDP-connected
   // browser ends the remote Chrome, which would kill the session mid-suite.
@@ -41,14 +49,30 @@ export const test = base.extend<{}, { solariBrowser: Browser }>({
     { scope: 'worker' },
   ],
 
-  // Over /cdp/ the session already has a context holding a page (unlike the /ws/
-  // path, where contexts() comes back empty). Reuse them rather than stacking
-  // new ones on top — a fresh context here would start on about:blank with none
-  // of the session's cookies.
-  context: async ({ solariBrowser }, use) => {
-    await use(solariBrowser.contexts()[0] ?? (await solariBrowser.newContext()))
+  // Worker-scoped snapshot of the session's starting auth state, taken once
+  // from the context the session was minted with. It is a snapshot, not the
+  // live context: later writes by any test go to that test's own context and
+  // are never folded back in here.
+  solariStorageState: [
+    async ({ solariBrowser }, use) => {
+      const sessionContext = solariBrowser.contexts()[0]
+      await use(sessionContext ? await sessionContext.storageState() : { cookies: [], origins: [] })
+    },
+    { scope: 'worker' },
+  ],
+
+  // Test-scoped (Playwright's default), unlike the two fixtures above. A new
+  // context per test on the shared browser is cheap and safe: closing a
+  // context ends only that context — the browser and the session stay up for
+  // the next test. Seeding it with the snapshot above is what carries the
+  // session's cookies into the test; skipping the seed would start every
+  // test signed out on about:blank.
+  context: async ({ solariBrowser, solariStorageState }, use) => {
+    const context = await solariBrowser.newContext({ storageState: solariStorageState })
+    await use(context)
+    await context.close()
   },
   page: async ({ context }, use) => {
-    await use(context.pages()[0] ?? (await context.newPage()))
+    await use(await context.newPage())
   },
 })
