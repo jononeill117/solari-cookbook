@@ -9,12 +9,17 @@ test("reads a page in a cloud browser", async ({ page }) => {
   await page.goto("https://example.com")
   await expect(page).toHaveTitle(/Example Domain/)
   await expect(page.locator("h1")).toHaveText("Example Domain")
+  // Leave a marker behind. If contexts leaked between tests, the next test
+  // would still see it.
+  await page.evaluate(() => localStorage.setItem("solari-marker", "first test was here"))
 })
 
-test("keeps state across tests in the same file", async ({ page }) => {
-  // Same session, same context, so the previous test's cookies and storage are
-  // still here. That is different from local Playwright, which gives each test
-  // a fresh context — worth knowing before you port a suite that relies on it.
-  await page.goto("https://example.com/?second=1")
-  expect(new URL(page.url()).searchParams.get("second")).toBe("1")
+test("starts from a fresh context, like local Playwright", async ({ page }) => {
+  // Isolation is per test: the previous test's context was closed and its
+  // storage discarded, so its marker is gone. What a test DOES inherit is a
+  // snapshot of the session's starting storage state (cookies from a login
+  // done before the suite), taken once — not the live state of other tests.
+  await page.goto("https://example.com")
+  const marker = await page.evaluate(() => localStorage.getItem("solari-marker"))
+  expect(marker).toBeNull()
 })

@@ -8,22 +8,24 @@ const escapeHtml = (value = "") =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;")
 
-const shortHash = (value) => (value ? value.slice(0, 12) : "—")
+// shortHash output lands in innerHTML too, so escape what survives the slice:
+// a crafted digest in run.json must not be able to smuggle markup through it.
+const shortHash = (value) => escapeHtml(value ? String(value).slice(0, 12) : "—")
 const branchById = (run, id) => run.branches.find((branch) => branch.candidate_id === id)
 
 function branchCard(branch, winnerId) {
   const passed = branch.checks.filter((check) => check.passed).length
   const selected = branch.candidate_id === winnerId
   return `
-    <button type="button" class="branch-card ${branch.status} ${selected ? "selected" : ""}"
+    <button type="button" class="branch-card ${escapeHtml(branch.status)} ${selected ? "selected" : ""}"
       data-branch="${escapeHtml(branch.candidate_id)}" aria-pressed="${selected}">
       <span class="branch-topline">
-        <span class="branch-state">${selected ? "selected" : branch.status}</span>
-        <span class="branch-score">${branch.score.toFixed(2)}</span>
+        <span class="branch-state">${selected ? "selected" : escapeHtml(branch.status)}</span>
+        <span class="branch-score">${Number(branch.score).toFixed(2)}</span>
       </span>
       <strong>${escapeHtml(branch.label)}</strong>
       <span>${escapeHtml(branch.hypothesis)}</span>
-      <span class="branch-meta">${passed}/${branch.checks.length} checks · ${branch.action_count} actions · ${branch.duration_ms}ms</span>
+      <span class="branch-meta">${passed}/${branch.checks.length} checks · ${escapeHtml(String(branch.action_count))} actions · ${escapeHtml(String(branch.duration_ms))}ms</span>
     </button>`
 }
 
@@ -35,7 +37,7 @@ function detailPanel(branch) {
         <h2 id="evidence-title">${escapeHtml(branch.label)}</h2>
         <p>${escapeHtml(branch.hypothesis)}</p>
         <dl class="evidence-stats">
-          <div><dt>Score</dt><dd>${branch.score.toFixed(2)}</dd></div>
+          <div><dt>Score</dt><dd>${Number(branch.score).toFixed(2)}</dd></div>
           <div><dt>Artifact</dt><dd>${shortHash(branch.artifact_sha256)}</dd></div>
           <div><dt>Phase</dt><dd>${escapeHtml(branch.phase)}</dd></div>
         </dl>
